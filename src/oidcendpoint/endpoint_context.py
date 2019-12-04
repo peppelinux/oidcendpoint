@@ -125,6 +125,8 @@ class EndpointContext:
         # arguments for endpoints add-ons
         self.args = {}
 
+        self.th_args = get_token_handlers(conf)
+
         # client database
         self.cdb = client_db or {}
 
@@ -288,9 +290,8 @@ class EndpointContext:
                     self._sub_func[key] = args["function"]
 
     def do_session_db(self, conf, sso_db, db=None):
-        th_args = get_token_handlers(conf)
         self.sdb = create_session_db(
-            self, th_args, db=db,
+            self, self.th_args, db=db,
             sso_db=sso_db,
             sub_func=self._sub_func
         )
