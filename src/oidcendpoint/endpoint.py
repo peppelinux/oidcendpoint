@@ -52,8 +52,8 @@ do_response returns a dictionary that can look like this:
 "response" MUST be present
 "http_headers" MAY be present
 "cookie": MAY be present 
-"response_placement": If absent defaults the endpoints response_placement parameter value
-    or if that is also missing 'url'
+"response_placement": If absent defaults to the endpoints response_placement 
+    parameter value or if that is also missing 'url'
 """
 
 
@@ -187,6 +187,9 @@ class Endpoint(object):
         self.endpoint_info = construct_endpoint_info(
             self.default_capabilities, **kwargs
         )
+        # This is for matching against aud in JWTs
+        # By default the endpoint's endpoint URL is an allowed target
+        self.allowed_targets = [self.name]
 
     def parse_request(self, request, auth=None, **kwargs):
         """
@@ -209,7 +212,7 @@ class Endpoint(object):
                         request,
                         "jwt",
                         keyjar=self.endpoint_context.keyjar,
-                        verify=self.endpoint_context.verify_ssl,
+                        verify=self.endpoint_context.httpc_params["verify"],
                         **kwargs
                     )
                 elif self.request_format == "url":
@@ -224,7 +227,7 @@ class Endpoint(object):
         # Verify that the client is allowed to do this
         _client_id = ""
         try:
-            auth_info = self.client_authentication(req, auth, **kwargs)
+            auth_info = self.client_authentication(req, auth, endpoint=self.name, **kwargs)
         except UnknownOrNoAuthnMethod:
             # If there is no required client authentication method
             if not self.client_authn_method:
@@ -270,7 +273,7 @@ class Endpoint(object):
 
         try:
             authn_info = verify_client(
-                self.endpoint_context, request, auth, self.get_client_id_from_token
+                self.endpoint_context, request, auth, self.get_client_id_from_token, **kwargs
             )
         except UnknownOrNoAuthnMethod:
             if self.client_authn_method is None:
@@ -425,3 +428,12 @@ class Endpoint(object):
             pass
 
         return _resp
+
+    def allowed_target_uris(self):
+        res = []
+        for t in self.allowed_targets:
+            if t == "":
+                res.append(self.endpoint_context.issuer)
+            else:
+                res.append(self.endpoint_context.endpoint[t].full_path)
+        return set(res)

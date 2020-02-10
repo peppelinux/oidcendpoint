@@ -12,6 +12,7 @@ from oidcendpoint import authz
 from oidcendpoint import rndstr
 from oidcendpoint.client_authn import CLIENT_AUTHN_METHOD
 from oidcendpoint.id_token import IDToken
+from oidcendpoint.in_memory_db import InMemoryDataBase
 from oidcendpoint.session import create_session_db
 from oidcendpoint.sso_db import SSODb
 from oidcendpoint.template_handler import Jinja2TemplateHandler
@@ -95,6 +96,7 @@ class EndpointContext:
         httpc=None,
         cookie_name=None,
         jwks_uri_path=None,
+        jti_db=None,
     ):
         self.conf = conf
         self.keyjar = keyjar or KeyJar()
@@ -109,7 +111,6 @@ class EndpointContext:
         self.endpoint = {}
         self.issuer = ""
         self.httpc = httpc or requests
-        self.verify_ssl = True
         self.jwks_uri = None
         self.sso_ttl = 14400  # 4h
         self.symkey = rndstr(24)
@@ -142,6 +143,11 @@ class EndpointContext:
         else:
             self.set_session_db(sso_db)
 
+        if jti_db:
+            self.set_jti_db(db=jti_db)
+        else:
+            self.set_jti_db()
+
         if cookie_name:
             self.cookie_name = cookie_name
         elif "cookie_name" in conf:
@@ -154,7 +160,6 @@ class EndpointContext:
             }
 
         for param in [
-            "verify_ssl",
             "issuer",
             "sso_ttl",
             "symkey",
@@ -226,12 +231,26 @@ class EndpointContext:
         # client registration access tokens
         self.registration_access_token = {}
 
+        # The HTTP clients request arguments
+        _verify = conf.get('verify_ssl', True)
+        self.httpc_params= {'verify': _verify}
+
+        _cli_cert = conf.get("client_cert")
+        _cli_key = conf.get("client_key")
+        if _cli_cert and _cli_key:
+            self.httpc_params["cert"] = (_cli_cert, _cli_key)
+        elif _cli_cert:  # The file contains both the certificate and the key
+            self.httpc_params["cert"] = _cli_cert
+
     def set_session_db(self, sso_db=None, db=None):
         sso_db = sso_db or SSODb()
         self.do_session_db(sso_db, db)
         # append useinfo db to the session db
         self.do_userinfo()
         logger.debug("Session DB: {}".format(self.sdb.__dict__))
+
+    def set_jti_db(self, db=None):
+        self.jti_db = db or InMemoryDataBase()
 
     def do_add_on(self):
         if self.conf.get("add_on"):
@@ -264,9 +283,7 @@ class EndpointContext:
                 self.userinfo = init_user_info(_conf, self.cwd)
                 self.sdb.userinfo = self.userinfo
             else:
-                logger.warning(
-                    ("Cannot init_user_info if any " "session_db was provided.")
-                )
+                logger.warning("Cannot init_user_info if no session_db was provided.")
 
     def do_id_token(self):
         _conf = self.conf.get("id_token")

@@ -303,7 +303,8 @@ class Registration(Endpoint):
         """
         si_url = request["sector_identifier_uri"]
         try:
-            res = self.endpoint_context.httpc.get(si_url)
+            res = self.endpoint_context.httpc.get(si_url,
+                                                  **self.endpoint_context.httpc_params)
             logger.debug("sector_identifier_uri => %s", sanitize(res.text))
         except Exception as err:
             logger.error(err)
@@ -371,9 +372,11 @@ class Registration(Endpoint):
         if new_id:
             # create new id och secret
             client_id = rndstr(12)
-            # cdb client_id MUT be unique!
+            # cdb client_id MUST be unique!
             while client_id in _context.cdb:
                 client_id = rndstr(12)
+            if "client_id" in request:
+                del request["client_id"]
         else:
             client_id = request.get("client_id")
             if not client_id:
